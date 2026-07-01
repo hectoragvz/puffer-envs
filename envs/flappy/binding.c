@@ -1,15 +1,14 @@
-#include "squared.h"
-#define OBS_SIZE 121
+#include "flappy.h"
+#define OBS_SIZE 2
 #define NUM_ATNS 1
-#define ACT_SIZES {5}
+#define ACT_SIZES {3}
 #define OBS_TENSOR_T ByteTensor
 
-#define Env Squared
+#define Env Flappy
 #include "vecenv.h"
 
 void my_init(Env* env, Dict* kwargs) {
     env->num_agents = 1;
-    env->size = dict_get(kwargs, "size")->value;
 }
 
 void my_log(Log* log, Dict* out) {
