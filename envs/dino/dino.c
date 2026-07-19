@@ -1,4 +1,5 @@
 #include "dino.h"
+#include "puffernet.h"
 
 void demo() {
     Dino env = {
@@ -26,13 +27,27 @@ void demo() {
     env.rewards = rewards;
     env.terminals = terminals;
 
+    // Depends on the workflow
+    // Multiple locations here - need a weights.bin file
+    // Currently training on a vast.ai instance to get this
+    Weights* weights = load_weights("resources/dino/dino_weights.bin");
+    int logit_sizes[1] = {2};
+    PufferNet* net = make_puffernet(weights, 1, 5, 128, 1, logit_sizes, 1);
+
     c_reset(&env);
     c_render(&env);
     while (!WindowShouldClose()) {
-        env.actions[0] = IsKeyPressed(KEY_SPACE) ? JUMP : NOOP;
+        if (IsKeyDown(KEY_LEFT_SHIFT)) {
+            env.actions[0] = IsKeyPressed(KEY_SPACE) ? JUMP : NOOP;
+        } else {
+            forward_puffernet(net, env.observations, env.actions);
+        }
         c_step(&env);
         c_render(&env);
     }
+
+    free_puffernet(net);
+    free(weights);
     c_close(&env);
 }
 
