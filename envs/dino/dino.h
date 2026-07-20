@@ -9,7 +9,7 @@ const unsigned char JUMP = 1;
 #define GRAVITY 2.0f
 #define JUMP_IMPULSE 18.0f
 #define OBSTACLE_SPEED 8.0f
-#define JUMP_PENALTY 0.01f
+#define JUMP_PENALTY 0.20f
 
 typedef struct {
     // Required - only use floats!
