@@ -1,6 +1,19 @@
 #include "dino.h"
 #include "puffernet.h"
 
+void forward_dino_policy(PufferNet* net, float* observations, float* actions) {
+    linear(net->encoder, observations);
+    mingru(net->mingru, net->encoder->output);
+    linear(net->decoder, net->mingru->output);
+    argmax_multidiscrete(net->multidiscrete, net->decoder->output, actions);
+}
+
+void reset_dino_policy(PufferNet* net) {
+    size_t state_size = net->mingru->num_layers *
+        net->mingru->batch_size * net->mingru->hidden_size;
+    memset(net->mingru->state, 0, state_size * sizeof(float));
+}
+
 void demo() {
     Dino env = {
         .num_agents = 1,
@@ -40,9 +53,12 @@ void demo() {
         if (IsKeyDown(KEY_LEFT_SHIFT)) {
             env.actions[0] = IsKeyPressed(KEY_SPACE) ? JUMP : NOOP;
         } else {
-            forward_puffernet(net, env.observations, env.actions);
+            forward_dino_policy(net, env.observations, env.actions);
         }
         c_step(&env);
+        if (env.terminals[0]) {
+            reset_dino_policy(net);
+        }
         c_render(&env);
     }
 

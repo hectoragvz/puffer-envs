@@ -9,6 +9,7 @@ const unsigned char JUMP = 1;
 #define GRAVITY 2.0f
 #define JUMP_IMPULSE 18.0f
 #define OBSTACLE_SPEED 8.0f
+#define JUMP_PENALTY 0.01f
 
 typedef struct {
     // Required - only use floats!
@@ -96,6 +97,8 @@ void c_step(Dino* env) {
     // If dino on ground, we jump and mod y_velocity
     if (action == JUMP && env->dinosaur.y == 0){
         env->dinosaur.y_velocity = JUMP_IMPULSE;
+        env->rewards[0] = -JUMP_PENALTY;
+        env->episode_return += env->rewards[0];
     }
     // if dino not on ground, gravity acts
     env->dinosaur.y_velocity -= GRAVITY;
