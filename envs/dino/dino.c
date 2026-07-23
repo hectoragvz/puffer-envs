@@ -23,6 +23,7 @@ void init_dino(Dino* env, float* observations, float* actions,
         .width = 800,
         .height = 250,
         .rng = 12345,
+        .auto_reset = 1,
         .dinosaur = {
             .x = 80,
             .width = 40,
@@ -47,6 +48,7 @@ void demo() {
     float rewards[1] = {0};
     float terminals[1] = {0};
     init_dino(&env, observations, actions, rewards, terminals);
+    env.auto_reset = 0;
 
     Weights* weights = load_weights("resources/dino_weights_20260722_234440_UTC.bin");
     int logit_sizes[1] = {2};
@@ -55,14 +57,22 @@ void demo() {
     c_reset(&env);
     c_render(&env);
     while (!WindowShouldClose()) {
-        if (IsKeyDown(KEY_LEFT_SHIFT)) {
-            env.actions[0] = IsKeyPressed(KEY_SPACE) ? JUMP : NOOP;
-        } else {
-            forward_dino_policy(net, env.observations, env.actions);
-        }
-        c_step(&env);
         if (env.terminals[0]) {
-            reset_dino_policy(net);
+            if (IsKeyPressed(KEY_R)) {
+                c_reset(&env);
+                env.terminals[0] = 0;
+                reset_dino_policy(net);
+            }
+        } else {
+            if (IsKeyDown(KEY_LEFT_SHIFT)) {
+                env.actions[0] = IsKeyPressed(KEY_SPACE) ? JUMP : NOOP;
+            } else {
+                forward_dino_policy(net, env.observations, env.actions);
+            }
+            c_step(&env);
+            if (env.terminals[0]) {
+                reset_dino_policy(net);
+            }
         }
         c_render(&env);
     }

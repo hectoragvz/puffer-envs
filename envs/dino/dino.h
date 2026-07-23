@@ -24,6 +24,7 @@ typedef struct {
     float x; // X position
     float height;
     float width;
+    int passed;
 } Obstacle ;
 
 typedef struct {
@@ -51,6 +52,7 @@ typedef struct {
     float height;
     float width;
     unsigned int rng;
+    int auto_reset;
 } Dino;
 
 void add_log(Dino* env) {
@@ -64,6 +66,7 @@ void add_log(Dino* env) {
 void spawn_obstacle(Dino* env) {
     int extra_distance = rand_r(&env->rng) % ((int)env->width / 2 + 1);
     env->obstacle.x = env->width + extra_distance;
+    env->obstacle.passed = 0;
 }
 
 void update_observations(Dino* env) {
@@ -119,14 +122,18 @@ void c_step(Dino* env) {
         env->rewards[0] = -1.0;
         env->episode_return += env->rewards[0];
         add_log(env);
-        c_reset(env);
+        if (env->auto_reset) c_reset(env);
         return;
     }
-    // Reward passing the obstacle
-    if (env->obstacle.x + env->obstacle.width < env->dinosaur.x + env->dinosaur.width){
+    // Reward a cleared obstacle once, then let it leave the screen.
+    if (!env->obstacle.passed &&
+        env->obstacle.x + env->obstacle.width < env->dinosaur.x) {
         env->rewards[0] = 1.0f;
         env->obstacles_passed += 1;
         env->episode_return += env->rewards[0];
+        env->obstacle.passed = 1;
+    }
+    if (env->obstacle.x + env->obstacle.width < 0) {
         spawn_obstacle(env);
     }
     update_observations(env);
@@ -165,6 +172,15 @@ void c_render(Dino* env) {
         (int)env->obstacle.height,
         (Color){187, 0, 0, 255}
     );
+    if (env->terminals[0]) {
+        DrawRectangle(0, 0, (int)env->width, (int)env->height,
+            (Color){0, 0, 0, 150});
+        DrawText("GAME OVER", 286, 80, 36, RAYWHITE);
+        DrawText(TextFormat("Score: %d", env->obstacles_passed),
+            330, 128, 24, RAYWHITE);
+        DrawText("Press R to restart  |  Esc to quit", 218, 174, 20,
+            RAYWHITE);
+    }
     EndDrawing();
 }
 

@@ -30,6 +30,7 @@ void my_init(Env* env, Dict* kwargs) {
     env->dinosaur.height = DINOSAUR_HEIGHT;
     env->obstacle.width = OBSTACLE_WIDTH;
     env->obstacle.height = OBSTACLE_HEIGHT;
+    env->auto_reset = 1;
 }
 
 void my_log(Log* log, Dict* out) {
