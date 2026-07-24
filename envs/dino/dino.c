@@ -50,7 +50,7 @@ void demo() {
     init_dino(&env, observations, actions, rewards, terminals);
     env.auto_reset = 0;
 
-    Weights* weights = load_weights("resources/dino_weights_20260722_234440_UTC.bin");
+    Weights* weights = load_weights("resources/dino_weights_20260723_003627_UTC.bin");
     int logit_sizes[1] = {2};
     PufferNet* net = make_puffernet(weights, 1, 5, 128, 1, logit_sizes, 1);
 
@@ -90,7 +90,7 @@ void run_headless_evaluation(int episodes, int trace) {
     float terminals[1] = {0};
     init_dino(&env, observations, actions, rewards, terminals);
 
-    Weights* weights = load_weights("resources/dino_weights_20260722_234440_UTC.bin");
+    Weights* weights = load_weights("resources/dino_weights_20260723_003627_UTC.bin");
     int logit_sizes[1] = {2};
     PufferNet* net = make_puffernet(weights, 1, 5, 128, 1, logit_sizes, 1);
     int total_passes = 0;

@@ -60,7 +60,7 @@ static void test_scripted_controller(void) {
     }
 }
 
-static void test_passed_obstacle_leaves_screen(void) {
+static void test_logical_obstacle_respawns_at_original_boundary(void) {
     float observations[5] = {0};
     float actions[1] = {NOOP};
     float rewards[1] = {0};
@@ -68,23 +68,56 @@ static void test_passed_obstacle_leaves_screen(void) {
     Dino env = make_env(observations, actions, rewards, terminals, 1);
 
     c_reset(&env);
-    env.obstacle.x = env.dinosaur.x - env.obstacle.width + 1;
+    env.dinosaur.y = 50;
+    env.obstacle.x = env.dinosaur.x + env.dinosaur.width -
+        env.obstacle.width + OBSTACLE_SPEED - 1;
     c_step(&env);
 
     assert(env.rewards[0] == 1.0f);
-    assert(env.obstacle.passed);
-    float x_after_pass = env.obstacle.x;
+    assert(env.obstacles_passed == 1);
+    assert(env.cleared_obstacle_active);
+    assert(env.cleared_obstacle.x + env.cleared_obstacle.width <
+        env.dinosaur.x + env.dinosaur.width);
+    assert(env.obstacle.x >= env.width);
+    assert(observations[2] ==
+        (env.obstacle.x - (env.dinosaur.x + env.dinosaur.width)) /
+        (env.width * 1.5f));
+}
+
+static void test_cleared_obstacle_is_cosmetic(void) {
+    float observations[5] = {0};
+    float actions[1] = {NOOP};
+    float rewards[1] = {0};
+    float terminals[1] = {0};
+    Dino env = make_env(observations, actions, rewards, terminals, 1);
+
+    c_reset(&env);
+    env.obstacle.x = 400;
+    env.cleared_obstacle = (Obstacle) {
+        .x = env.dinosaur.x,
+        .width = env.obstacle.width,
+        .height = env.obstacle.height,
+    };
+    env.cleared_obstacle_active = 1;
 
     c_step(&env);
     assert(env.rewards[0] == 0);
-    assert(env.obstacle.passed);
-    assert(env.obstacle.x < x_after_pass);
+    assert(!env.terminals[0]);
+    assert(env.obstacles_passed == 0);
+    assert(env.obstacle.x == 400 - OBSTACLE_SPEED);
+    assert(env.cleared_obstacle.x == env.dinosaur.x - OBSTACLE_SPEED);
+    assert(observations[2] ==
+        (env.obstacle.x - (env.dinosaur.x + env.dinosaur.width)) /
+        (env.width * 1.5f));
 
-    env.obstacle.x = -env.obstacle.width + OBSTACLE_SPEED - 1;
-    env.obstacle.passed = 1;
+    env.cleared_obstacle.x =
+        -env.cleared_obstacle.width + OBSTACLE_SPEED - 1;
     c_step(&env);
-    assert(!env.obstacle.passed);
-    assert(env.obstacle.x >= env.width);
+    assert(!env.cleared_obstacle_active);
+
+    env.cleared_obstacle_active = 1;
+    c_reset(&env);
+    assert(!env.cleared_obstacle_active);
 }
 
 static void test_training_collision_still_resets(void) {
@@ -124,7 +157,8 @@ static void test_viewer_collision_does_not_reset(void) {
 int main(void) {
     test_jump_cost();
     test_scripted_controller();
-    test_passed_obstacle_leaves_screen();
+    test_logical_obstacle_respawns_at_original_boundary();
+    test_cleared_obstacle_is_cosmetic();
     test_training_collision_still_resets();
     test_viewer_collision_does_not_reset();
     puts("dino mechanics tests passed");
