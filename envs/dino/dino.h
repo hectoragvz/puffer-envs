@@ -36,6 +36,11 @@ typedef struct {
 } Dinosaur;
 
 typedef struct {
+    Texture2D dinosaur;
+    Texture2D cactus;
+} DinoClient;
+
+typedef struct {
     Log log;
     Dinosaur dinosaur;
     Obstacle obstacle;
@@ -54,6 +59,7 @@ typedef struct {
     unsigned int rng;
     int auto_reset;
     int cleared_obstacle_active;
+    DinoClient* client;
 } Dino;
 
 void add_log(Dino* env) {
@@ -146,9 +152,12 @@ void c_step(Dino* env) {
 }
 
 void c_render(Dino* env) {
-    if (!IsWindowReady()) {
+    if (env->client == NULL) {
         InitWindow((int)env->width, (int)env->height, "PufferLib Dino");
         SetTargetFPS(60);
+        env->client = (DinoClient*)calloc(1, sizeof(DinoClient));
+        env->client->dinosaur = LoadTexture("resources/dino/dinosaur.png");
+        env->client->cactus = LoadTexture("resources/dino/cactus.png");
     }
 
     if (IsKeyDown(KEY_ESCAPE)) {
@@ -164,42 +173,29 @@ void c_render(Dino* env) {
     BeginDrawing();
     ClearBackground((Color){6, 24, 24, 255});
     DrawLine(0, ground_y, (int)env->width, ground_y, (Color){200, 200, 200, 255});
-    DrawRectangle(
-        dino_x,
-        dino_y,
-        (int)env->dinosaur.width,
-        (int)env->dinosaur.height,
-        (Color){0, 187, 187, 255}
-    );
-    DrawRectangle(
-        obstacle_x,
-        obstacle_y,
-        (int)env->obstacle.width,
-        (int)env->obstacle.height,
-        (Color){187, 0, 0, 255}
-    );
+    const char* score = TextFormat("Score: %d", env->obstacles_passed);
+    DrawText(score, (int)env->width - MeasureText(score, 20) - 16,
+        16, 20, RAYWHITE);
+    DrawTexture(env->client->dinosaur, dino_x, dino_y, WHITE);
+    DrawTexture(env->client->cactus, obstacle_x, obstacle_y, WHITE);
     if (env->cleared_obstacle_active) {
-        DrawRectangle(
+        DrawTexture(
+            env->client->cactus,
             (int)env->cleared_obstacle.x,
             ground_y - (int)env->cleared_obstacle.height,
-            (int)env->cleared_obstacle.width,
-            (int)env->cleared_obstacle.height,
-            (Color){187, 0, 0, 255}
+            WHITE
         );
-    }
-    if (env->terminals[0]) {
-        DrawRectangle(0, 0, (int)env->width, (int)env->height,
-            (Color){0, 0, 0, 150});
-        DrawText("GAME OVER", 286, 80, 36, RAYWHITE);
-        DrawText(TextFormat("Score: %d", env->obstacles_passed),
-            330, 128, 24, RAYWHITE);
-        DrawText("Press R to restart  |  Esc to quit", 218, 174, 20,
-            RAYWHITE);
     }
     EndDrawing();
 }
 
 void c_close(Dino* env) {
+    if (env->client != NULL) {
+        UnloadTexture(env->client->dinosaur);
+        UnloadTexture(env->client->cactus);
+        free(env->client);
+        env->client = NULL;
+    }
     if (IsWindowReady()) {
         CloseWindow();
     }

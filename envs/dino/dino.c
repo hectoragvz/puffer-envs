@@ -1,7 +1,16 @@
 #include "dino.h"
 #include "puffernet.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #define EVALUATION_MAX_STEPS 2000
+
+typedef struct {
+    Dino* env;
+    PufferNet* net;
+} DemoArgs;
 
 void forward_dino_policy(PufferNet* net, float* observations, float* actions) {
     linear(net->encoder, observations);
@@ -41,6 +50,28 @@ void init_dino(Dino* env, float* observations, float* actions,
     env->terminals = terminals;
 }
 
+void demo_frame(void* data) {
+    DemoArgs* args = (DemoArgs*)data;
+    Dino* env = args->env;
+
+#ifndef __EMSCRIPTEN__
+    if (IsKeyDown(KEY_LEFT_SHIFT)) {
+        env->actions[0] = IsKeyPressed(KEY_SPACE) ? JUMP : NOOP;
+    } else
+#endif
+    {
+        forward_dino_policy(args->net, env->observations, env->actions);
+    }
+
+    c_step(env);
+    if (env->terminals[0]) {
+        c_reset(env);
+        env->terminals[0] = 0;
+        reset_dino_policy(args->net);
+    }
+    c_render(env);
+}
+
 void demo() {
     Dino env;
     float observations[5] = {0};
@@ -56,30 +87,19 @@ void demo() {
 
     c_reset(&env);
     c_render(&env);
+    DemoArgs args = {.env = &env, .net = net};
+
+#ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop_arg(demo_frame, &args, 0, true);
+#else
     while (!WindowShouldClose()) {
-        if (env.terminals[0]) {
-            if (IsKeyPressed(KEY_R)) {
-                c_reset(&env);
-                env.terminals[0] = 0;
-                reset_dino_policy(net);
-            }
-        } else {
-            if (IsKeyDown(KEY_LEFT_SHIFT)) {
-                env.actions[0] = IsKeyPressed(KEY_SPACE) ? JUMP : NOOP;
-            } else {
-                forward_dino_policy(net, env.observations, env.actions);
-            }
-            c_step(&env);
-            if (env.terminals[0]) {
-                reset_dino_policy(net);
-            }
-        }
-        c_render(&env);
+        demo_frame(&args);
     }
 
     free_puffernet(net);
     free(weights);
     c_close(&env);
+#endif
 }
 
 void run_headless_evaluation(int episodes, int trace) {
