@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include "raylib.h"
 
@@ -10,6 +11,47 @@ const unsigned char JUMP = 1;
 #define JUMP_IMPULSE 18.0f
 #define OBSTACLE_SPEED 8.0f
 #define JUMP_PENALTY 0.05f
+
+#define DINO_CHALLENGE_SCHEMA_VERSION 1u
+#define DINO_ENVIRONMENT_VERSION 1u
+#define DINO_POLICY_VERSION 1u
+#define DINO_OBSERVATION_COUNT 5u
+#define DINO_REPLAY_LIMIT 2000u
+#define DINO_POLICY_WEIGHTS_SHA256 \
+    "35136a8c398b2c47affeb0a3a55673d18c6dc082db03849f1f2ce9a57c49923e"
+
+typedef enum {
+    DINO_CHALLENGE_EVENT_SPEED = 1,
+    DINO_CHALLENGE_EVENT_OBSTACLE = 2,
+} DinoChallengeEventType;
+
+typedef struct {
+    uint32_t tick;
+    uint32_t type;
+    float value;
+} DinoChallengeEvent;
+
+typedef struct {
+    uint32_t schema_version;
+    uint32_t environment_version;
+    uint32_t policy_version;
+    uint32_t seed;
+    const DinoChallengeEvent* events;
+    uint32_t event_count;
+} DinoChallengeRecipe;
+
+typedef enum {
+    DINO_REPLAY_OK = 0,
+    DINO_REPLAY_UNSUPPORTED_SCHEMA,
+    DINO_REPLAY_UNSUPPORTED_ENVIRONMENT,
+    DINO_REPLAY_UNSUPPORTED_POLICY,
+    DINO_REPLAY_UNSUPPORTED_EVENTS,
+} DinoReplayStatus;
+
+typedef enum {
+    DINO_EPISODE_COLLISION = 1,
+    DINO_EPISODE_TRUNCATED = 2,
+} DinoEpisodeEnding;
 
 typedef struct {
     // Required - only use floats!
@@ -70,9 +112,32 @@ void add_log(Dino* env) {
     env->log.n++;
 }
 
+uint32_t dino_random(Dino* env) {
+    uint32_t state = (uint32_t)env->rng;
+    state = state * UINT32_C(1664525) + UINT32_C(1013904223);
+    env->rng = state;
+    return state;
+}
+
 void spawn_obstacle(Dino* env) {
-    int extra_distance = rand_r(&env->rng) % ((int)env->width / 2 + 1);
+    int extra_distance = dino_random(env) % ((int)env->width / 2 + 1);
     env->obstacle.x = env->width + extra_distance;
+}
+
+DinoReplayStatus dino_validate_recipe(const DinoChallengeRecipe* recipe) {
+    if (recipe->schema_version != DINO_CHALLENGE_SCHEMA_VERSION) {
+        return DINO_REPLAY_UNSUPPORTED_SCHEMA;
+    }
+    if (recipe->environment_version != DINO_ENVIRONMENT_VERSION) {
+        return DINO_REPLAY_UNSUPPORTED_ENVIRONMENT;
+    }
+    if (recipe->policy_version != DINO_POLICY_VERSION) {
+        return DINO_REPLAY_UNSUPPORTED_POLICY;
+    }
+    if (recipe->event_count != 0) {
+        return DINO_REPLAY_UNSUPPORTED_EVENTS;
+    }
+    return DINO_REPLAY_OK;
 }
 
 void update_observations(Dino* env) {
@@ -97,6 +162,16 @@ void c_reset(Dino* env){
     env->obstacles_passed = 0;
     env->episode_return = 0;
     update_observations(env);
+}
+
+void dino_seeded_replay_reset(Dino* env, uint32_t seed) {
+    env->rng = seed;
+    env->log = (Log) {0};
+    env->actions[0] = 0;
+    env->rewards[0] = 0;
+    env->terminals[0] = 0;
+    env->cleared_obstacle = (Obstacle) {0};
+    c_reset(env);
 }
 
 void c_step(Dino* env) {

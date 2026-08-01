@@ -11,7 +11,7 @@
 #define OBSTACLE_HEIGHT 40
 #define OBSTACLE_WIDTH 24
 
-#define OBS_SIZE 5
+#define OBS_SIZE DINO_OBSERVATION_COUNT
 
 #define Env Dino
 
