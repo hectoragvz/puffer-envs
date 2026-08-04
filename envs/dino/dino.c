@@ -25,6 +25,7 @@ typedef struct {
     float episode_return;
     uint32_t rng;
     uint32_t result_tick;
+    float speed_multiplier;
 } DinoTrajectoryStep;
 
 typedef struct {
@@ -35,6 +36,8 @@ typedef struct {
     uint32_t collision_tick;
     uint32_t jump_count;
     uint32_t jump_ticks[DINO_REPLAY_LIMIT];
+    uint32_t event_result_count;
+    DinoSpeedChangeResult event_results[DINO_CHALLENGE_EVENT_LIMIT];
     uint64_t digest;
     DinoTrajectoryStep steps[DINO_REPLAY_LIMIT];
 } DinoReplay;
@@ -88,6 +91,15 @@ static void digest_obstacle(uint64_t* digest, Obstacle obstacle) {
     digest_float(digest, obstacle.width);
 }
 
+static void digest_replay_event(uint64_t* digest, uint32_t event_index,
+        const DinoChallengeEvent* event, DinoSpeedChangeResult result) {
+    digest_u32(digest, event_index);
+    digest_u32(digest, event->tick);
+    digest_u32(digest, event->type);
+    digest_float(digest, event->value);
+    digest_u32(digest, (uint32_t)result);
+}
+
 static void digest_trajectory_step(uint64_t* digest,
         const DinoTrajectoryStep* step) {
     digest_u32(digest, step->tick);
@@ -109,6 +121,7 @@ static void digest_trajectory_step(uint64_t* digest,
     digest_float(digest, step->episode_return);
     digest_u32(digest, step->rng);
     digest_u32(digest, step->result_tick);
+    digest_float(digest, step->speed_multiplier);
 }
 
 static DinoReplayStatus replay_dino(Dino* env, PufferNet* net,
@@ -119,11 +132,26 @@ static DinoReplayStatus replay_dino(Dino* env, PufferNet* net,
     if (replay->status != DINO_REPLAY_OK) return replay->status;
 
     env->auto_reset = 0;
+    env->randomize_speed = 0;
     dino_seeded_replay_reset(env, recipe->seed);
     reset_dino_policy(net);
     replay->digest = UINT64_C(14695981039346656037);
+    uint32_t event_index = 0;
 
     for (uint32_t tick = 0; tick < DINO_REPLAY_LIMIT; tick++) {
+        uint32_t first_event = event_index;
+        event_index = dino_apply_speed_events_at_tick(
+            env, recipe->events, recipe->event_count, event_index, tick,
+            replay->event_results
+        );
+        for (uint32_t i = first_event; i < event_index; i++) {
+            digest_replay_event(
+                &replay->digest, i, &recipe->events[i],
+                replay->event_results[i]
+            );
+        }
+        replay->event_result_count = event_index;
+
         DinoTrajectoryStep* step = &replay->steps[tick];
         step->tick = tick;
         memcpy(step->observations, env->observations,
@@ -144,6 +172,7 @@ static DinoReplayStatus replay_dino(Dino* env, PufferNet* net,
             (uint32_t)env->cleared_obstacle_active;
         step->score = (uint32_t)env->obstacles_passed;
         step->episode_return = env->episode_return;
+        step->speed_multiplier = env->speed_multiplier;
         step->rng = env->rng;
         step->result_tick = (uint32_t)env->tick;
         digest_trajectory_step(&replay->digest, step);
@@ -175,7 +204,8 @@ static int replay_steps_equal(const DinoTrajectoryStep* a,
             a->cleared_obstacle_active != b->cleared_obstacle_active ||
             a->score != b->score ||
             a->episode_return != b->episode_return || a->rng != b->rng ||
-            a->result_tick != b->result_tick) {
+            a->result_tick != b->result_tick ||
+            a->speed_multiplier != b->speed_multiplier) {
         return 0;
     }
     return 1;
@@ -186,6 +216,9 @@ static int replays_equal(const DinoReplay* a, const DinoReplay* b) {
             a->step_count != b->step_count || a->end_tick != b->end_tick ||
             a->collision_tick != b->collision_tick ||
             a->jump_count != b->jump_count || a->digest != b->digest ||
+            a->event_result_count != b->event_result_count ||
+            memcmp(a->event_results, b->event_results,
+                a->event_result_count * sizeof(*a->event_results)) != 0 ||
             memcmp(a->jump_ticks, b->jump_ticks,
                 a->jump_count * sizeof(*a->jump_ticks)) != 0) {
         return 0;

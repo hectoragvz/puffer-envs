@@ -30,6 +30,8 @@ void my_init(Env* env, Dict* kwargs) {
     env->dinosaur.height = DINOSAUR_HEIGHT;
     env->obstacle.width = OBSTACLE_WIDTH;
     env->obstacle.height = OBSTACLE_HEIGHT;
+    env->speed_multiplier = DINO_DEFAULT_SPEED;
+    env->randomize_speed = 1;
     env->auto_reset = 1;
 }
 

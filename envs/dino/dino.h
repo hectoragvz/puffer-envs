@@ -13,12 +13,18 @@ const unsigned char JUMP = 1;
 #define JUMP_PENALTY 0.05f
 
 #define DINO_CHALLENGE_SCHEMA_VERSION 1u
-#define DINO_ENVIRONMENT_VERSION 1u
+#define DINO_ENVIRONMENT_VERSION 2u
 #define DINO_POLICY_VERSION 1u
-#define DINO_OBSERVATION_COUNT 5u
+#define DINO_OBSERVATION_COUNT 6u
 #define DINO_REPLAY_LIMIT 2000u
+#define DINO_CHALLENGE_EVENT_LIMIT DINO_REPLAY_LIMIT
+#define DINO_TRAINING_SPEED_EVENT_LIMIT 2u
 #define DINO_POLICY_WEIGHTS_SHA256 \
     "35136a8c398b2c47affeb0a3a55673d18c6dc082db03849f1f2ce9a57c49923e"
+
+#define DINO_MIN_SPEED 1.0f
+#define DINO_MAX_SPEED 2.0f
+#define DINO_DEFAULT_SPEED 1.0f
 
 typedef enum {
     DINO_CHALLENGE_EVENT_SPEED = 1,
@@ -46,7 +52,17 @@ typedef enum {
     DINO_REPLAY_UNSUPPORTED_ENVIRONMENT,
     DINO_REPLAY_UNSUPPORTED_POLICY,
     DINO_REPLAY_UNSUPPORTED_EVENTS,
+    DINO_REPLAY_INVALID_EVENT_LIST,
+    DINO_REPLAY_TOO_MANY_EVENTS,
+    DINO_REPLAY_UNSUPPORTED_EVENT_TYPE,
+    DINO_REPLAY_INVALID_EVENT_TICK,
+    DINO_REPLAY_INVALID_EVENT_ORDER,
 } DinoReplayStatus;
+
+typedef enum {
+    ENV_SPEED_ACCEPTED,
+    ENV_SPEED_INVALID,
+} DinoSpeedChangeResult;
 
 typedef enum {
     DINO_EPISODE_COLLISION = 1,
@@ -101,6 +117,11 @@ typedef struct {
     unsigned int rng;
     int auto_reset;
     int cleared_obstacle_active;
+    float speed_multiplier;
+    int randomize_speed;
+    DinoChallengeEvent training_speed_events[DINO_TRAINING_SPEED_EVENT_LIMIT];
+    uint32_t training_speed_event_count;
+    uint32_t training_speed_event_index;
     DinoClient* client;
 } Dino;
 
@@ -134,13 +155,29 @@ DinoReplayStatus dino_validate_recipe(const DinoChallengeRecipe* recipe) {
     if (recipe->policy_version != DINO_POLICY_VERSION) {
         return DINO_REPLAY_UNSUPPORTED_POLICY;
     }
-    if (recipe->event_count != 0) {
-        return DINO_REPLAY_UNSUPPORTED_EVENTS;
+    if (recipe->event_count > DINO_CHALLENGE_EVENT_LIMIT) {
+        return DINO_REPLAY_TOO_MANY_EVENTS;
+    }
+    if (recipe->event_count > 0 && recipe->events == NULL) {
+        return DINO_REPLAY_INVALID_EVENT_LIST;
+    }
+    for (uint32_t i = 0; i < recipe->event_count; i++) {
+        const DinoChallengeEvent* event = &recipe->events[i];
+        if (event->type != DINO_CHALLENGE_EVENT_SPEED) {
+            return DINO_REPLAY_UNSUPPORTED_EVENT_TYPE;
+        }
+        if (event->tick >= DINO_REPLAY_LIMIT) {
+            return DINO_REPLAY_INVALID_EVENT_TICK;
+        }
+        if (i > 0 && event->tick < recipe->events[i - 1].tick) {
+            return DINO_REPLAY_INVALID_EVENT_ORDER;
+        }
     }
     return DINO_REPLAY_OK;
 }
 
 void update_observations(Dino* env) {
+    // Normalized variables here - usually / by the max value of the variable
     float max_obstacle_x = env->width * 1.5f;
     env->observations[0] = env->dinosaur.y / env->height;
     env->observations[1] = env->dinosaur.y_velocity / JUMP_IMPULSE;
@@ -149,9 +186,66 @@ void update_observations(Dino* env) {
         max_obstacle_x;
     env->observations[3] = env->obstacle.width / env->width;
     env->observations[4] = env->obstacle.height / env->height;
+    env->observations[5] =
+        (env->speed_multiplier - DINO_MIN_SPEED) /
+        (DINO_MAX_SPEED - DINO_MIN_SPEED);
+}
+
+DinoSpeedChangeResult dino_change_speed(Dino* env, float new_speed) {
+    if (new_speed != DINO_MIN_SPEED && new_speed != DINO_MAX_SPEED) {
+        return ENV_SPEED_INVALID;
+    }
+    env->speed_multiplier = new_speed;
+    // Since we have a new speed for the env
+    update_observations(env);
+    return ENV_SPEED_ACCEPTED;
+}
+
+uint32_t dino_apply_speed_events_at_tick(Dino* env,
+        const DinoChallengeEvent* events, uint32_t event_count,
+        uint32_t event_index, uint32_t tick,
+        DinoSpeedChangeResult* results) {
+    while (event_index < event_count && events[event_index].tick == tick) {
+        DinoSpeedChangeResult result =
+            dino_change_speed(env, events[event_index].value);
+        if (results != NULL) results[event_index] = result;
+        event_index++;
+    }
+    return event_index;
+}
+
+void dino_configure_training_speed_events(Dino* env) {
+    env->training_speed_event_count = 0;
+    env->training_speed_event_index = 0;
+    if (!env->randomize_speed) return;
+
+    uint32_t scenario = dino_random(env) % 100u;
+    if (scenario < 40u) return;
+
+    DinoChallengeEvent* first = &env->training_speed_events[0];
+    *first = (DinoChallengeEvent) {
+        .type = DINO_CHALLENGE_EVENT_SPEED,
+        .value = DINO_MAX_SPEED,
+    };
+    env->training_speed_event_count = 1;
+
+    if (scenario < 60u) return;
+    if (scenario < 80u) {
+        first->tick = 40u + dino_random(env) % 161u;
+        return;
+    }
+
+    first->tick = 40u + dino_random(env) % 111u;
+    env->training_speed_events[1] = (DinoChallengeEvent) {
+        .tick = first->tick + 40u + dino_random(env) % 111u,
+        .type = DINO_CHALLENGE_EVENT_SPEED,
+        .value = DINO_MIN_SPEED,
+    };
+    env->training_speed_event_count = 2;
 }
 
 void c_reset(Dino* env){
+    env->speed_multiplier = DINO_DEFAULT_SPEED;
     // Rest dino to starting position
     env->dinosaur.y = 0;
     env->dinosaur.y_velocity = 0;
@@ -162,6 +256,11 @@ void c_reset(Dino* env){
     env->obstacles_passed = 0;
     env->episode_return = 0;
     update_observations(env);
+    dino_configure_training_speed_events(env);
+    env->training_speed_event_index = dino_apply_speed_events_at_tick(
+        env, env->training_speed_events, env->training_speed_event_count,
+        env->training_speed_event_index, 0, NULL
+    );
 }
 
 void dino_seeded_replay_reset(Dino* env, uint32_t seed) {
@@ -194,10 +293,11 @@ void c_step(Dino* env) {
         env->dinosaur.y = 0;
         env->dinosaur.y_velocity = 0;
     }
-    // move obstacle
-    env->obstacle.x -= OBSTACLE_SPEED;
+    // move obstacle at nx speed
+    float movement = OBSTACLE_SPEED * env->speed_multiplier;
+    env->obstacle.x -= movement;
     if (env->cleared_obstacle_active) {
-        env->cleared_obstacle.x -= OBSTACLE_SPEED;
+        env->cleared_obstacle.x -= movement;
         if (env->cleared_obstacle.x + env->cleared_obstacle.width < 0) {
             env->cleared_obstacle_active = 0;
         }
@@ -224,6 +324,11 @@ void c_step(Dino* env) {
         spawn_obstacle(env);
     }
     update_observations(env);
+    /* env->tick is now the next zero-based pre-step tick. */
+    env->training_speed_event_index = dino_apply_speed_events_at_tick(
+        env, env->training_speed_events, env->training_speed_event_count,
+        env->training_speed_event_index, (uint32_t)env->tick, NULL
+    );
 }
 
 void c_render(Dino* env) {
