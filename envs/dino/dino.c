@@ -608,16 +608,25 @@ static int run_replay_cli(uint32_t seed) {
 }
 
 static const uint32_t SEED_0_JUMPS[] = {
-    100, 206, 315, 404, 496, 594, 695, 786, 890, 980, 1080, 1210, 1299,
-    1421, 1544, 1667, 1769, 1872, 1992,
+    66, 83, 100, 172, 189, 206, 281, 298, 315, 369, 386, 403, 462, 479,
+    496, 559, 576, 593, 661, 678, 695, 752, 769, 786, 855, 872, 889, 945,
+    962, 979, 1046, 1063, 1080, 1176, 1193, 1210, 1265, 1282, 1299, 1387,
+    1404, 1421, 1510, 1527, 1544, 1632, 1649, 1666, 1735, 1752, 1769,
+    1837, 1854, 1871, 1958, 1975, 1992,
 };
 static const uint32_t SEED_1_JUMPS[] = {
-    97, 228, 352, 442, 565, 687, 798, 910, 1005, 1106, 1216, 1350, 1440,
-    1553, 1688, 1806, 1903,
+    63, 80, 97, 194, 211, 228, 317, 334, 351, 408, 425, 442, 531, 548,
+    565, 653, 670, 687, 763, 780, 797, 875, 892, 909, 971, 988, 1005,
+    1072, 1089, 1106, 1181, 1198, 1215, 1316, 1333, 1350, 1405, 1422,
+    1439, 1519, 1536, 1553, 1654, 1671, 1688, 1772, 1789, 1806, 1869,
+    1886, 1903, 1976, 1993,
 };
 static const uint32_t SEED_12345_JUMPS[] = {
-    120, 212, 304, 433, 522, 643, 767, 904, 1029, 1150, 1254, 1360, 1450,
-    1570, 1664, 1800, 1931,
+    86, 103, 120, 178, 195, 212, 269, 286, 303, 399, 416, 433, 488, 505,
+    522, 609, 626, 643, 733, 750, 767, 869, 886, 903, 995, 1012, 1029,
+    1115, 1132, 1149, 1220, 1237, 1254, 1325, 1342, 1359, 1415, 1432,
+    1449, 1536, 1553, 1570, 1629, 1646, 1663, 1766, 1783, 1800, 1897,
+    1914, 1931,
 };
 
 static const DinoGoldenReplay OFFICIAL_REPLAYS[] = {
@@ -625,34 +634,34 @@ static const DinoGoldenReplay OFFICIAL_REPLAYS[] = {
         .seed = 0,
         .ending = DINO_EPISODE_TRUNCATED,
         .score = 18,
-        .episode_return = 17.0499992f,
+        .episode_return = 15.1499929f,
         .end_tick = 1999,
         .collision_tick = UINT32_MAX,
         .jump_count = sizeof(SEED_0_JUMPS) / sizeof(*SEED_0_JUMPS),
         .jump_ticks = SEED_0_JUMPS,
-        .digest = UINT64_C(0xa9618683f40a23a1),
+        .digest = UINT64_C(0x6271d48f0b2aff1f),
     },
     {
         .seed = 1,
         .ending = DINO_EPISODE_TRUNCATED,
         .score = 17,
-        .episode_return = 16.1499977f,
+        .episode_return = 14.3499937f,
         .end_tick = 1999,
         .collision_tick = UINT32_MAX,
         .jump_count = sizeof(SEED_1_JUMPS) / sizeof(*SEED_1_JUMPS),
         .jump_ticks = SEED_1_JUMPS,
-        .digest = UINT64_C(0x52b8eee0217a6ecf),
+        .digest = UINT64_C(0xd43a1db868eba80a),
     },
     {
         .seed = 12345,
         .ending = DINO_EPISODE_TRUNCATED,
         .score = 17,
-        .episode_return = 16.1499977f,
+        .episode_return = 14.4499941f,
         .end_tick = 1999,
         .collision_tick = UINT32_MAX,
         .jump_count = sizeof(SEED_12345_JUMPS) / sizeof(*SEED_12345_JUMPS),
         .jump_ticks = SEED_12345_JUMPS,
-        .digest = UINT64_C(0x9ce7075622c9ef32),
+        .digest = UINT64_C(0x81890f1da96f9ac5),
     },
 };
 
