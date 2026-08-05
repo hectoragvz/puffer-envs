@@ -132,7 +132,7 @@ static DinoReplayStatus replay_dino(Dino* env, PufferNet* net,
     if (replay->status != DINO_REPLAY_OK) return replay->status;
 
     env->auto_reset = 0;
-    env->randomize_speed = 0;
+    env->training_speedup_after_passes = 0;
     dino_seeded_replay_reset(env, recipe->seed);
     reset_dino_policy(net);
     replay->digest = UINT64_C(14695981039346656037);
@@ -284,6 +284,7 @@ void demo() {
     float terminals[1] = {0};
     init_dino(&env, observations, actions, rewards, terminals);
     env.auto_reset = 0;
+    env.training_speedup_after_passes = 0;
 
     Weights* weights = load_weights("resources/dino/dino_weights.bin");
     int logit_sizes[1] = {2};
@@ -401,6 +402,7 @@ typedef struct {
     const char* name;
     const DinoChallengeEvent* events;
     uint32_t event_count;
+    int training_speedup_after_passes;
 } DinoEvaluationSuite;
 
 static const DinoChallengeEvent EVAL_FIXED_2X[] = {
@@ -440,6 +442,11 @@ static const DinoEvaluationSuite EVALUATION_SUITES[] = {
         .event_count = sizeof(EVAL_MULTIPLE_TRANSITIONS) /
             sizeof(*EVAL_MULTIPLE_TRANSITIONS),
     },
+    {
+        .name = "curriculum",
+        .training_speedup_after_passes =
+            DINO_CURRICULUM_SPEEDUP_AFTER_PASSES,
+    },
 };
 
 static void evaluate_suite(PufferNet* net, const DinoEvaluationSuite* suite) {
@@ -452,7 +459,7 @@ static void evaluate_suite(PufferNet* net, const DinoEvaluationSuite* suite) {
     float terminals[1] = {0};
     init_dino(&env, observations, actions, rewards, terminals);
     env.auto_reset = 0;
-    env.randomize_speed = 0;
+    env.training_speedup_after_passes = suite->training_speedup_after_passes;
 
     int total_passes = 0;
     int total_steps = 0;
@@ -753,7 +760,7 @@ int main(int argc, char* argv[]) {
         fprintf(stderr,
             "Usage: %s [--headless|--trace|--replay <seed>|"
             "--verify-replay|--evaluate-suite "
-            "<1x|2x|up|down|multi|all> [weights]]\n",
+            "<1x|2x|up|down|multi|curriculum|all> [weights]]\n",
             argv[0]);
         return 1;
     }

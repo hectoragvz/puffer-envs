@@ -61,11 +61,13 @@ scenario with:
 ./dino --evaluate-suite 1x path/to/checkpoint.bin
 ```
 
-The available suites are `1x`, `2x`, `up`, `down`, `multi`, and `all`. Output
-includes passes, returns, episode lengths, first-obstacle crashes, truncations,
-and mean takeoff distance at each speed. A checkpoint must match the input
-dimension of the executable; evaluate five-observation checkpoints with a
-Phase 0 build.
+The available suites are `1x`, `2x`, `up`, `down`, `multi`, `curriculum`, and
+`all`. The `curriculum` suite starts at 1× and switches permanently to 2× after
+the seventh obstacle pass; the other suites use only their explicit speed
+events. Output includes passes, returns, episode lengths, first-obstacle
+crashes, truncations, and mean takeoff distance at each speed. A checkpoint
+must match the input dimension of the executable; evaluate five-observation
+checkpoints with a Phase 0 build.
 
 The official records live in `envs/dino/dino.c`. To intentionally regenerate
 them after an environment or policy version change, run the three `--replay`
@@ -79,10 +81,10 @@ the console training log, configuration, and a run manifest to Drive. Treat its
 `latest-candidate.bin` as unevaluated until it has been compared with the other
 archived checkpoints using the suites above.
 
-For the six-observation fixed-1× control, set `randomize_speed = 0` in the
-configuration's `[env]` section before building. Leave it at `1` for the full
-40/20/20/20 Phase 1 curriculum. Record a distinct `[train] seed` for repeated
-runs.
+Ordinary training starts every episode at 1× and switches permanently to 2×
+after `training_speedup_after_passes` successful obstacle passes. The default
+threshold is `7`. Set it to `0` in the configuration's `[env]` section for a
+fixed-1× diagnostic run. Record a distinct `[train] seed` for repeated runs.
 
 Open `http://localhost:8000/game.html`, then copy the bundle into the site:
 

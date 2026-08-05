@@ -224,67 +224,81 @@ static void test_speed_event_timing_order_and_rejection(void) {
     assert(env.speed_multiplier == DINO_MIN_SPEED);
 }
 
-static void test_training_speed_event_timing(void) {
+static float pass_obstacle(Dino* env) {
+    env->dinosaur.y = 50;
+    env->dinosaur.y_velocity = 0;
+    env->obstacle.x = env->dinosaur.x + env->dinosaur.width -
+        env->obstacle.width + OBSTACLE_SPEED * env->speed_multiplier - 1;
+    float obstacle_x = env->obstacle.x;
+    c_step(env);
+    return obstacle_x;
+}
+
+static void test_training_speedup_after_passes(void) {
     float observations[DINO_OBSERVATION_COUNT] = {0};
     float actions[1] = {NOOP};
     float rewards[1] = {0};
     float terminals[1] = {0};
     Dino env = make_env(observations, actions, rewards, terminals, 1);
+    env.training_speedup_after_passes =
+        DINO_CURRICULUM_SPEEDUP_AFTER_PASSES;
 
     c_reset(&env);
-    env.randomize_speed = 1;
-    env.training_speed_events[0] = (DinoChallengeEvent) {
-        .tick = 1,
-        .type = DINO_CHALLENGE_EVENT_SPEED,
-        .value = DINO_MAX_SPEED,
-    };
-    env.training_speed_event_count = 1;
-    env.training_speed_event_index = 0;
-    env.obstacle.x = 400;
+    assert(env.speed_multiplier == DINO_MIN_SPEED);
+    assert(observations[5] == 0.0f);
+    assert(!env.episode_reached_2x);
 
-    c_step(&env);
-    assert(env.obstacle.x == 400 - OBSTACLE_SPEED);
-    assert(env.speed_multiplier == DINO_MAX_SPEED);
-    assert(observations[5] == 1.0f);
-
-    c_step(&env);
-    assert(env.obstacle.x == 400 - 3 * OBSTACLE_SPEED);
-}
-
-static void test_training_speed_schedules_are_bounded(void) {
-    for (uint32_t seed = 0; seed < 100; seed++) {
-        float observations[DINO_OBSERVATION_COUNT] = {0};
-        float actions[1] = {NOOP};
-        float rewards[1] = {0};
-        float terminals[1] = {0};
-        Dino env = make_env(observations, actions, rewards, terminals, seed);
-        env.randomize_speed = 1;
-
-        c_reset(&env);
-        assert(env.training_speed_event_count <=
-            DINO_TRAINING_SPEED_EVENT_LIMIT);
-        for (uint32_t i = 0; i < env.training_speed_event_count; i++) {
-            DinoChallengeEvent event = env.training_speed_events[i];
-            assert(event.type == DINO_CHALLENGE_EVENT_SPEED);
-            assert(event.tick < DINO_REPLAY_LIMIT);
-            assert(event.value == DINO_MIN_SPEED ||
-                event.value == DINO_MAX_SPEED);
-            if (i > 0) {
-                assert(event.tick >= env.training_speed_events[i - 1].tick);
-            }
+    for (int pass = 1; pass <= 8; pass++) {
+        float speed_before_pass = env.speed_multiplier;
+        float obstacle_x = pass_obstacle(&env);
+        assert(env.rewards[0] == 1.0f);
+        assert(env.obstacles_passed == pass);
+        if (pass <= 6) {
+            assert(env.speed_multiplier == DINO_MIN_SPEED);
+            assert(observations[5] == 0.0f);
+            assert(!env.episode_reached_2x);
+        } else {
+            assert(env.speed_multiplier == DINO_MAX_SPEED);
+            assert(observations[5] == 1.0f);
+            assert(env.episode_reached_2x);
+        }
+        if (pass == 7) {
+            assert(speed_before_pass == DINO_MIN_SPEED);
+            assert(env.cleared_obstacle.x == obstacle_x - OBSTACLE_SPEED);
+        }
+        if (pass == 8) {
+            assert(speed_before_pass == DINO_MAX_SPEED);
+            assert(env.cleared_obstacle.x ==
+                obstacle_x - 2 * OBSTACLE_SPEED);
         }
     }
+
+    env.dinosaur.y = 0;
+    env.obstacle.x = env.dinosaur.x;
+    c_step(&env);
+    assert(env.terminals[0]);
+    assert(env.log.reached_2x == 1.0f);
+    assert(env.log.n == 1.0f);
+    assert(env.speed_multiplier == DINO_MIN_SPEED);
+    assert(observations[5] == 0.0f);
+    assert(!env.episode_reached_2x);
 }
 
-static void test_training_speed_scenario_proportions(void) {
-    int counts[4] = {0};
-    for (uint32_t roll = 0; roll < 100; roll++) {
-        counts[dino_training_speed_scenario(roll)]++;
+static void test_training_speedup_zero_stays_at_1x(void) {
+    float observations[DINO_OBSERVATION_COUNT] = {0};
+    float actions[1] = {NOOP};
+    float rewards[1] = {0};
+    float terminals[1] = {0};
+    Dino env = make_env(observations, actions, rewards, terminals, 1);
+    env.training_speedup_after_passes = 0;
+
+    c_reset(&env);
+    for (int pass = 1; pass <= 8; pass++) {
+        pass_obstacle(&env);
+        assert(env.obstacles_passed == pass);
+        assert(env.speed_multiplier == DINO_MIN_SPEED);
+        assert(observations[5] == 0.0f);
     }
-    assert(counts[DINO_TRAINING_NORMAL_1X] == 40);
-    assert(counts[DINO_TRAINING_CONSTANT_2X] == 20);
-    assert(counts[DINO_TRAINING_ONE_TRANSITION] == 20);
-    assert(counts[DINO_TRAINING_TWO_TRANSITIONS] == 20);
 }
 
 static void test_jump_cost(void) {
@@ -358,6 +372,37 @@ static void test_scripted_controller_speed_suites(void) {
     assert_scripted_controller_passes("up", up, 1);
     assert_scripted_controller_passes("down", down, 2);
     assert_scripted_controller_passes("multi", multiple, 2);
+}
+
+static void test_scripted_controller_crosses_curriculum_transition(void) {
+    for (unsigned int seed = 1; seed <= 100; seed++) {
+        float observations[DINO_OBSERVATION_COUNT] = {0};
+        float actions[1] = {0};
+        float rewards[1] = {0};
+        float terminals[1] = {0};
+        Dino env = make_env(observations, actions, rewards, terminals, seed);
+        env.training_speedup_after_passes =
+            DINO_CURRICULUM_SPEEDUP_AFTER_PASSES;
+        c_reset(&env);
+
+        for (int step = 0; step < 2000 && env.obstacles_passed < 8; step++) {
+            float distance = env.obstacle.x -
+                (env.dinosaur.x + env.dinosaur.width);
+            float jump_distance =
+                8 * OBSTACLE_SPEED * env.speed_multiplier;
+            env.actions[0] = env.dinosaur.y == 0 &&
+                distance <= jump_distance ? JUMP : NOOP;
+            c_step(&env);
+            if (env.terminals[0]) {
+                fprintf(stderr, "scripted curriculum seed=%u step=%d\n",
+                    seed, step);
+            }
+            assert(!env.terminals[0]);
+        }
+        assert(env.obstacles_passed == 8);
+        assert(env.speed_multiplier == DINO_MAX_SPEED);
+        assert(observations[5] == 1.0f);
+    }
 }
 
 static void test_logical_obstacle_respawns_at_original_boundary(void) {
@@ -466,11 +511,11 @@ int main(void) {
     test_speed_changes_world_movement_only();
     test_reset_restores_default_speed();
     test_speed_event_timing_order_and_rejection();
-    test_training_speed_event_timing();
-    test_training_speed_schedules_are_bounded();
-    test_training_speed_scenario_proportions();
+    test_training_speedup_after_passes();
+    test_training_speedup_zero_stays_at_1x();
     test_jump_cost();
     test_scripted_controller_speed_suites();
+    test_scripted_controller_crosses_curriculum_transition();
     test_logical_obstacle_respawns_at_original_boundary();
     test_cleared_obstacle_is_cosmetic();
     test_training_collision_still_resets();

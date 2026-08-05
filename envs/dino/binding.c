@@ -31,7 +31,8 @@ void my_init(Env* env, Dict* kwargs) {
     env->obstacle.width = OBSTACLE_WIDTH;
     env->obstacle.height = OBSTACLE_HEIGHT;
     env->speed_multiplier = DINO_DEFAULT_SPEED;
-    env->randomize_speed = (int)dict_get(kwargs, "randomize_speed")->value;
+    env->training_speedup_after_passes =
+        (int)dict_get(kwargs, "training_speedup_after_passes")->value;
     env->auto_reset = 1;
 }
 
@@ -40,4 +41,5 @@ void my_log(Log* log, Dict* out) {
     dict_set(out, "score", log->score);
     dict_set(out, "episode_return", log->episode_return);
     dict_set(out, "episode_length", log->episode_length);
+    dict_set(out, "reached_2x", log->reached_2x);
 }
