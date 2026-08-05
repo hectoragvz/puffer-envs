@@ -31,7 +31,7 @@ void my_init(Env* env, Dict* kwargs) {
     env->obstacle.width = OBSTACLE_WIDTH;
     env->obstacle.height = OBSTACLE_HEIGHT;
     env->speed_multiplier = DINO_DEFAULT_SPEED;
-    env->randomize_speed = 1;
+    env->randomize_speed = (int)dict_get(kwargs, "randomize_speed")->value;
     env->auto_reset = 1;
 }
 

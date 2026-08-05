@@ -53,12 +53,36 @@ bash build.sh dino --fast
 ./dino --verify-replay
 ```
 
+Evaluate a compatible checkpoint on 100 fixed seeds under each Phase 1 speed
+scenario with:
+
+```sh
+./dino --evaluate-suite all resources/dino/dino_weights.bin
+./dino --evaluate-suite 1x path/to/checkpoint.bin
+```
+
+The available suites are `1x`, `2x`, `up`, `down`, `multi`, and `all`. Output
+includes passes, returns, episode lengths, first-obstacle crashes, truncations,
+and mean takeoff distance at each speed. A checkpoint must match the input
+dimension of the executable; evaluate five-observation checkpoints with a
+Phase 0 build.
+
 The official records live in `envs/dino/dino.c`. To intentionally regenerate
 them after an environment or policy version change, run the three `--replay`
 commands, update each golden summary, jump trace, and digest from their output,
 then run `--verify-replay` and both native and WebAssembly builds. A digest is
 FNV-1a over every recorded trajectory scalar, encoded least-significant byte
 first; floats are hashed by their IEEE-754 bit patterns.
+
+The Colab notebook pins both source repositories and archives every checkpoint,
+the console training log, configuration, and a run manifest to Drive. Treat its
+`latest-candidate.bin` as unevaluated until it has been compared with the other
+archived checkpoints using the suites above.
+
+For the six-observation fixed-1× control, set `randomize_speed = 0` in the
+configuration's `[env]` section before building. Leave it at `1` for the full
+40/20/20/20 Phase 1 curriculum. Record a distinct `[train] seed` for repeated
+runs.
 
 Open `http://localhost:8000/game.html`, then copy the bundle into the site:
 

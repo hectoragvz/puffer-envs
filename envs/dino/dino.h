@@ -14,13 +14,13 @@ const unsigned char JUMP = 1;
 
 #define DINO_CHALLENGE_SCHEMA_VERSION 1u
 #define DINO_ENVIRONMENT_VERSION 2u
-#define DINO_POLICY_VERSION 1u
+#define DINO_POLICY_VERSION 2u
 #define DINO_OBSERVATION_COUNT 6u
 #define DINO_REPLAY_LIMIT 2000u
 #define DINO_CHALLENGE_EVENT_LIMIT DINO_REPLAY_LIMIT
 #define DINO_TRAINING_SPEED_EVENT_LIMIT 2u
 #define DINO_POLICY_WEIGHTS_SHA256 \
-    "35136a8c398b2c47affeb0a3a55673d18c6dc082db03849f1f2ce9a57c49923e"
+    "29f8c9a21e911daaaf36f8049bb648bd9257d9175c351c613b4758a88fc18a5e"
 
 #define DINO_MIN_SPEED 1.0f
 #define DINO_MAX_SPEED 2.0f
@@ -63,6 +63,13 @@ typedef enum {
     ENV_SPEED_ACCEPTED,
     ENV_SPEED_INVALID,
 } DinoSpeedChangeResult;
+
+typedef enum {
+    DINO_TRAINING_NORMAL_1X,
+    DINO_TRAINING_CONSTANT_2X,
+    DINO_TRAINING_ONE_TRANSITION,
+    DINO_TRAINING_TWO_TRANSITIONS,
+} DinoTrainingSpeedScenario;
 
 typedef enum {
     DINO_EPISODE_COLLISION = 1,
@@ -214,13 +221,22 @@ uint32_t dino_apply_speed_events_at_tick(Dino* env,
     return event_index;
 }
 
+DinoTrainingSpeedScenario dino_training_speed_scenario(uint32_t roll) {
+    roll %= 100u;
+    if (roll < 40u) return DINO_TRAINING_NORMAL_1X;
+    if (roll < 60u) return DINO_TRAINING_CONSTANT_2X;
+    if (roll < 80u) return DINO_TRAINING_ONE_TRANSITION;
+    return DINO_TRAINING_TWO_TRANSITIONS;
+}
+
 void dino_configure_training_speed_events(Dino* env) {
     env->training_speed_event_count = 0;
     env->training_speed_event_index = 0;
     if (!env->randomize_speed) return;
 
-    uint32_t scenario = dino_random(env) % 100u;
-    if (scenario < 40u) return;
+    DinoTrainingSpeedScenario scenario =
+        dino_training_speed_scenario(dino_random(env));
+    if (scenario == DINO_TRAINING_NORMAL_1X) return;
 
     DinoChallengeEvent* first = &env->training_speed_events[0];
     *first = (DinoChallengeEvent) {
@@ -229,8 +245,8 @@ void dino_configure_training_speed_events(Dino* env) {
     };
     env->training_speed_event_count = 1;
 
-    if (scenario < 60u) return;
-    if (scenario < 80u) {
+    if (scenario == DINO_TRAINING_CONSTANT_2X) return;
+    if (scenario == DINO_TRAINING_ONE_TRANSITION) {
         first->tick = 40u + dino_random(env) % 161u;
         return;
     }

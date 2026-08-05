@@ -397,6 +397,155 @@ void run_headless_evaluation(int episodes, int trace) {
     free(weights);
 }
 
+typedef struct {
+    const char* name;
+    const DinoChallengeEvent* events;
+    uint32_t event_count;
+} DinoEvaluationSuite;
+
+static const DinoChallengeEvent EVAL_FIXED_2X[] = {
+    {.tick = 0, .type = DINO_CHALLENGE_EVENT_SPEED, .value = DINO_MAX_SPEED},
+};
+static const DinoChallengeEvent EVAL_1X_TO_2X[] = {
+    {.tick = 40, .type = DINO_CHALLENGE_EVENT_SPEED, .value = DINO_MAX_SPEED},
+};
+static const DinoChallengeEvent EVAL_2X_TO_1X[] = {
+    {.tick = 0, .type = DINO_CHALLENGE_EVENT_SPEED, .value = DINO_MAX_SPEED},
+    {.tick = 20, .type = DINO_CHALLENGE_EVENT_SPEED, .value = DINO_MIN_SPEED},
+};
+static const DinoChallengeEvent EVAL_MULTIPLE_TRANSITIONS[] = {
+    {.tick = 20, .type = DINO_CHALLENGE_EVENT_SPEED, .value = DINO_MAX_SPEED},
+    {.tick = 25, .type = DINO_CHALLENGE_EVENT_SPEED, .value = DINO_MIN_SPEED},
+};
+static const DinoEvaluationSuite EVALUATION_SUITES[] = {
+    {.name = "1x"},
+    {
+        .name = "2x",
+        .events = EVAL_FIXED_2X,
+        .event_count = sizeof(EVAL_FIXED_2X) / sizeof(*EVAL_FIXED_2X),
+    },
+    {
+        .name = "up",
+        .events = EVAL_1X_TO_2X,
+        .event_count = sizeof(EVAL_1X_TO_2X) / sizeof(*EVAL_1X_TO_2X),
+    },
+    {
+        .name = "down",
+        .events = EVAL_2X_TO_1X,
+        .event_count = sizeof(EVAL_2X_TO_1X) / sizeof(*EVAL_2X_TO_1X),
+    },
+    {
+        .name = "multi",
+        .events = EVAL_MULTIPLE_TRANSITIONS,
+        .event_count = sizeof(EVAL_MULTIPLE_TRANSITIONS) /
+            sizeof(*EVAL_MULTIPLE_TRANSITIONS),
+    },
+};
+
+static void evaluate_suite(PufferNet* net, const DinoEvaluationSuite* suite) {
+    const uint32_t first_seed = 100000u;
+    const int episodes = 100;
+    Dino env;
+    float observations[DINO_OBSERVATION_COUNT] = {0};
+    float actions[1] = {0};
+    float rewards[1] = {0};
+    float terminals[1] = {0};
+    init_dino(&env, observations, actions, rewards, terminals);
+    env.auto_reset = 0;
+    env.randomize_speed = 0;
+
+    int total_passes = 0;
+    int total_steps = 0;
+    int total_jumps = 0;
+    int crashes_before_first_obstacle = 0;
+    int truncated_episodes = 0;
+    float total_return = 0;
+    float takeoff_distance[2] = {0};
+    int takeoffs[2] = {0};
+
+    for (int episode = 0; episode < episodes; episode++) {
+        dino_seeded_replay_reset(&env, first_seed + (uint32_t)episode);
+        reset_dino_policy(net);
+        uint32_t event_index = 0;
+        int episode_passes = 0;
+        int episode_steps = 0;
+
+        while (!env.terminals[0] &&
+                episode_steps < (int)EVALUATION_MAX_STEPS) {
+            event_index = dino_apply_speed_events_at_tick(
+                &env, suite->events, suite->event_count, event_index,
+                (uint32_t)env.tick, NULL
+            );
+            float distance = env.obstacle.x -
+                (env.dinosaur.x + env.dinosaur.width);
+            forward_dino_policy(net, env.observations, env.actions);
+            int jumped = (int)env.actions[0] == JUMP && env.dinosaur.y == 0;
+            if (jumped) {
+                int speed_index = env.speed_multiplier == DINO_MAX_SPEED;
+                takeoff_distance[speed_index] += distance;
+                takeoffs[speed_index]++;
+                total_jumps++;
+            }
+
+            c_step(&env);
+            episode_steps++;
+            total_steps++;
+            if (env.rewards[0] > 0) {
+                episode_passes++;
+                total_passes++;
+            }
+        }
+
+        if (env.terminals[0] && episode_passes == 0) {
+            crashes_before_first_obstacle++;
+        }
+        if (!env.terminals[0]) truncated_episodes++;
+        total_return += env.episode_return;
+    }
+
+    printf(
+        "suite=%s seeds=%u-%u episodes=%d mean_passes=%.2f "
+        "mean_return=%.3f mean_steps=%.1f mean_jumps=%.2f "
+        "first_obstacle_crashes=%d truncated=%d "
+        "takeoff_1x=%.1f(n=%d) takeoff_2x=%.1f(n=%d)\n",
+        suite->name, first_seed, first_seed + episodes - 1, episodes,
+        total_passes / (float)episodes, total_return / episodes,
+        total_steps / (float)episodes, total_jumps / (float)episodes,
+        crashes_before_first_obstacle, truncated_episodes,
+        takeoffs[0] ? takeoff_distance[0] / takeoffs[0] : 0, takeoffs[0],
+        takeoffs[1] ? takeoff_distance[1] / takeoffs[1] : 0, takeoffs[1]
+    );
+}
+
+static int run_diagnostic_evaluation(const char* suite_name,
+        const char* weights_path) {
+    printf("weights=%s\n", weights_path);
+    Weights* weights = load_weights(weights_path);
+    int logit_sizes[1] = {2};
+    PufferNet* net = make_puffernet(
+        weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1
+    );
+    int found = 0;
+
+    for (size_t i = 0; i < sizeof(EVALUATION_SUITES) /
+            sizeof(*EVALUATION_SUITES); i++) {
+        const DinoEvaluationSuite* suite = &EVALUATION_SUITES[i];
+        if (strcmp(suite_name, "all") == 0 ||
+                strcmp(suite_name, suite->name) == 0) {
+            evaluate_suite(net, suite);
+            found = 1;
+        }
+    }
+
+    free_puffernet(net);
+    free(weights);
+    if (!found) {
+        fprintf(stderr, "Unknown evaluation suite: %s\n", suite_name);
+        return 1;
+    }
+    return 0;
+}
+
 static void print_replay(const DinoChallengeRecipe* recipe,
         const DinoReplay* replay) {
     const DinoTrajectoryStep* final =
@@ -595,9 +744,16 @@ int main(int argc, char* argv[]) {
         return run_replay_cli(seed);
     } else if (strcmp(argv[1], "--verify-replay") == 0 && argc == 2) {
         return verify_official_replays();
+    } else if (strcmp(argv[1], "--evaluate-suite") == 0 &&
+            (argc == 3 || argc == 4)) {
+        const char* weights_path = argc == 4 ? argv[3] :
+            "resources/dino/dino_weights.bin";
+        return run_diagnostic_evaluation(argv[2], weights_path);
     } else {
         fprintf(stderr,
-            "Usage: %s [--headless|--trace|--replay <seed>|--verify-replay]\n",
+            "Usage: %s [--headless|--trace|--replay <seed>|"
+            "--verify-replay|--evaluate-suite "
+            "<1x|2x|up|down|multi|all> [weights]]\n",
             argv[0]);
         return 1;
     }
