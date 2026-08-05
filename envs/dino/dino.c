@@ -284,7 +284,8 @@ void demo() {
     float terminals[1] = {0};
     init_dino(&env, observations, actions, rewards, terminals);
     env.auto_reset = 0;
-    env.training_speedup_after_passes = 0;
+    env.training_speedup_after_passes =
+        DINO_CURRICULUM_SPEEDUP_AFTER_PASSES;
 
     Weights* weights = load_weights("resources/dino/dino_weights.bin");
     int logit_sizes[1] = {2};

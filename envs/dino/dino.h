@@ -319,7 +319,11 @@ void c_render(Dino* env) {
     BeginDrawing();
     ClearBackground((Color){6, 24, 24, 255});
     DrawLine(0, ground_y, (int)env->width, ground_y, (Color){200, 200, 200, 255});
-    const char* score = TextFormat("Score: %d", env->obstacles_passed);
+    const char* score = TextFormat(
+        "Score: %d  Speed: %.0f×",
+        env->obstacles_passed,
+        env->speed_multiplier
+    );
     DrawText(score, (int)env->width - MeasureText(score, 20) - 16,
         16, 20, RAYWHITE);
     DrawTexture(env->client->dinosaur, dino_x, dino_y, WHITE);
