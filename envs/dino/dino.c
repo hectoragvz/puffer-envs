@@ -260,7 +260,13 @@ void demo_frame(void* data) {
 
 #ifndef __EMSCRIPTEN__
     if (IsKeyDown(KEY_LEFT_SHIFT)) {
-        env->actions[0] = IsKeyPressed(KEY_SPACE) ? JUMP : NOOP;
+        if (IsKeyPressed(KEY_SPACE)) {
+            env->actions[0] = JUMP;
+        } else if (IsKeyDown(KEY_DOWN)) {
+            env->actions[0] = DUCK;
+        } else {
+            env->actions[0] = NOOP;
+        }
     } else
 #endif
     {
@@ -288,7 +294,7 @@ void demo() {
         DINO_CURRICULUM_SPEEDUP_AFTER_PASSES;
 
     Weights* weights = load_weights("resources/dino/dino_weights.bin");
-    int logit_sizes[1] = {2};
+    int logit_sizes[1] = {3};
     PufferNet* net = make_puffernet(
         weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1
     );
@@ -319,7 +325,7 @@ void run_headless_evaluation(int episodes, int trace) {
     init_dino(&env, observations, actions, rewards, terminals);
 
     Weights* weights = load_weights("resources/dino/dino_weights.bin");
-    int logit_sizes[1] = {2};
+    int logit_sizes[1] = {3};
     PufferNet* net = make_puffernet(
         weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1
     );
@@ -529,7 +535,7 @@ static int run_diagnostic_evaluation(const char* suite_name,
         const char* weights_path) {
     printf("weights=%s\n", weights_path);
     Weights* weights = load_weights(weights_path);
-    int logit_sizes[1] = {2};
+    int logit_sizes[1] = {3};
     PufferNet* net = make_puffernet(
         weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1
     );
@@ -588,7 +594,7 @@ static int run_replay_cli(uint32_t seed) {
     init_dino(&env, observations, actions, rewards, terminals);
 
     Weights* weights = load_weights("resources/dino/dino_weights.bin");
-    int logit_sizes[1] = {2};
+    int logit_sizes[1] = {3};
     PufferNet* net = make_puffernet(
         weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1
     );
@@ -689,7 +695,7 @@ static int verify_official_replays(void) {
     init_dino(&env, observations, actions, rewards, terminals);
 
     Weights* weights = load_weights("resources/dino/dino_weights.bin");
-    int logit_sizes[1] = {2};
+    int logit_sizes[1] = {3};
     PufferNet* net = make_puffernet(
         weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1
     );

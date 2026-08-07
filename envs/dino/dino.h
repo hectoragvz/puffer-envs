@@ -3,19 +3,26 @@
 #include <string.h>
 #include "raylib.h"
 
+// No-op, jump, duck
 const unsigned char NOOP = 0;
-// Jumping
 const unsigned char JUMP = 1;
+const unsigned char DUCK = 2;
 
 #define GRAVITY 2.0f
 #define JUMP_IMPULSE 18.0f
 #define OBSTACLE_SPEED 8.0f
 #define JUMP_PENALTY 0.05f
 
+#define DINO_STANDING_HEIGHT 48.0f
+#define DINO_DUCKING_HEIGHT 24.0f
+#define METEOR_WIDTH 24.0f
+#define METEOR_HEIGHT 20.0f
+#define METEOR_BOTTOM 28.0f
+
 #define DINO_CHALLENGE_SCHEMA_VERSION 1u
-#define DINO_ENVIRONMENT_VERSION 2u
+#define DINO_ENVIRONMENT_VERSION 3u
 #define DINO_POLICY_VERSION 3u
-#define DINO_OBSERVATION_COUNT 6u
+#define DINO_OBSERVATION_COUNT 7u
 #define DINO_REPLAY_LIMIT 2000u
 #define DINO_CHALLENGE_EVENT_LIMIT DINO_REPLAY_LIMIT
 #define DINO_CURRICULUM_SPEEDUP_AFTER_PASSES 7
@@ -83,6 +90,7 @@ typedef struct {
     float x; // X position
     float height;
     float width;
+    float bottom; // Off the ground level
 } Obstacle ;
 
 typedef struct {
@@ -92,11 +100,14 @@ typedef struct {
     // Body of the dino
     float height;
     float width;
+    int ducking; // Is the dino ducking?
 } Dinosaur;
 
 typedef struct {
     Texture2D dinosaur;
     Texture2D cactus;
+    Texture2D dinosaurDucking;
+    Texture2D meteor;
 } DinoClient;
 
 typedef struct {
@@ -142,7 +153,21 @@ uint32_t dino_random(Dino* env) {
 
 void spawn_obstacle(Dino* env) {
     int extra_distance = dino_random(env) % ((int)env->width / 2 + 1);
+    uint32_t obstacle_roll = dino_random(env);
     env->obstacle.x = env->width + extra_distance;
+    // Keep the first 2 bits of the random number to determine the obstacle type. 0 = meteor, 1 = cactus.
+    // 00, 01, 10, 11 - 3/4 chance of cactus, 1/4 chance of meteor.
+    if ((obstacle_roll >> 30) == 0) {
+        // Meteor
+        env->obstacle.width = METEOR_WIDTH;
+        env->obstacle.height = METEOR_HEIGHT;
+        env->obstacle.bottom = METEOR_BOTTOM;
+    } else {
+        // Cactus
+        env->obstacle.width = 24;
+        env->obstacle.height = 40;
+        env->obstacle.bottom = 0;
+    }
 }
 
 DinoReplayStatus dino_validate_recipe(const DinoChallengeRecipe* recipe) {
@@ -189,6 +214,7 @@ void update_observations(Dino* env) {
     env->observations[5] =
         (env->speed_multiplier - DINO_MIN_SPEED) /
         (DINO_MAX_SPEED - DINO_MIN_SPEED);
+    env->observations[6] = env->obstacle.bottom / env->height;
 }
 
 DinoSpeedChangeResult dino_change_speed(Dino* env, float new_speed) {
@@ -227,6 +253,7 @@ void c_reset(Dino* env){
     env->tick = 0;
     env->obstacles_passed = 0;
     env->episode_return = 0;
+    env->dinosaur.ducking = 0;
     update_observations(env);
 }
 
@@ -245,6 +272,8 @@ void c_step(Dino* env) {
     env->terminals[0] = 0;
     env->rewards[0] = 0;
     int action = (int)env->actions[0]; // NOOP or JUMP
+    env->dinosaur.ducking = action == DUCK && env->dinosaur.y == 0;
+
     // If dino on ground, we jump and mod y_velocity
     if (action == JUMP && env->dinosaur.y == 0){
         env->dinosaur.y_velocity = JUMP_IMPULSE;
@@ -269,10 +298,15 @@ void c_step(Dino* env) {
             env->cleared_obstacle_active = 0;
         }
     }
+    float dinosaur_height = env->dinosaur.ducking ? DINO_DUCKING_HEIGHT : DINO_STANDING_HEIGHT;
+    float dinosaur_top = dinosaur_height + env->dinosaur.y;
+    float obstacle_top = env->obstacle.height + env->obstacle.bottom;
+
     // Collision
     if (env->dinosaur.x + env->dinosaur.width > env->obstacle.x &&
         env->dinosaur.x < env->obstacle.x + env->obstacle.width &&
-        env->dinosaur.y < env->obstacle.height){
+        dinosaur_top > env->obstacle.bottom &&
+        env->dinosaur.y < obstacle_top) {
         env->terminals[0] = 1;
         env->rewards[0] = -1.0;
         env->episode_return += env->rewards[0];
@@ -304,6 +338,8 @@ void c_render(Dino* env) {
         env->client = (DinoClient*)calloc(1, sizeof(DinoClient));
         env->client->dinosaur = LoadTexture("resources/dino/dinosaur.png");
         env->client->cactus = LoadTexture("resources/dino/cactus.png");
+        env->client->dinosaurDucking = LoadTexture("resources/dino/dinosaur_ducking.png");
+        env->client->meteor = LoadTexture("resources/dino/meteor.png");
     }
 
     if (IsKeyDown(KEY_ESCAPE)) {
@@ -311,12 +347,8 @@ void c_render(Dino* env) {
     }
 
     int ground_y = (int)env->height - 20;
-    int dino_x = (int)env->dinosaur.x;
-    int dino_y = ground_y - (int)env->dinosaur.height - (int)env->dinosaur.y;
-    int obstacle_x = (int)env->obstacle.x;
-    int obstacle_y = ground_y - (int)env->obstacle.height;
-
     BeginDrawing();
+
     ClearBackground((Color){6, 24, 24, 255});
     DrawLine(0, ground_y, (int)env->width, ground_y, (Color){200, 200, 200, 255});
     const char* score = TextFormat(
@@ -324,17 +356,25 @@ void c_render(Dino* env) {
         env->obstacles_passed,
         env->speed_multiplier
     );
-    DrawText(score, (int)env->width - MeasureText(score, 20) - 16,
-        16, 20, RAYWHITE);
-    DrawTexture(env->client->dinosaur, dino_x, dino_y, WHITE);
-    DrawTexture(env->client->cactus, obstacle_x, obstacle_y, WHITE);
+
+    int dino_height = env->dinosaur.ducking ? (int)DINO_DUCKING_HEIGHT : (int)DINO_STANDING_HEIGHT;
+    int dino_x = (int)env->dinosaur.x;
+    int dino_y = ground_y - dino_height - (int)env->dinosaur.y;
+
+    int obstacle_x = (int)env->obstacle.x;
+    int obstacle_y = ground_y - (int)env->obstacle.bottom - (int)env->obstacle.height;
+
+    Texture2D dinosaur = env->dinosaur.ducking ? env->client->dinosaurDucking : env->client->dinosaur;
+    Texture2D obstacle = env->obstacle.bottom == 0 ? env->client->cactus : env->client->meteor;
+
+    DrawText(score, (int)env->width - MeasureText(score, 20) - 16, 16, 20, RAYWHITE);
+
+    DrawTexture(dinosaur, dino_x, dino_y, WHITE);
+    DrawTexture(obstacle, obstacle_x, obstacle_y, WHITE);
+
     if (env->cleared_obstacle_active) {
-        DrawTexture(
-            env->client->cactus,
-            (int)env->cleared_obstacle.x,
-            ground_y - (int)env->cleared_obstacle.height,
-            WHITE
-        );
+        Texture2D cleared_obstacle = env->cleared_obstacle.bottom == 0 ? env->client->cactus : env->client->meteor;
+        DrawTexture( cleared_obstacle, (int)env->cleared_obstacle.x, ground_y - (int)env->cleared_obstacle.bottom - (int)env->cleared_obstacle.height, WHITE);
     }
     EndDrawing();
 }
@@ -343,6 +383,8 @@ void c_close(Dino* env) {
     if (env->client != NULL) {
         UnloadTexture(env->client->dinosaur);
         UnloadTexture(env->client->cactus);
+        UnloadTexture(env->client->dinosaurDucking);
+        UnloadTexture(env->client->meteor);
         free(env->client);
         env->client = NULL;
     }

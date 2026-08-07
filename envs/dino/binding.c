@@ -16,7 +16,7 @@
 #define Env Dino
 
 #define NUM_ATNS 1
-#define ACT_SIZES {2}
+#define ACT_SIZES {3}
 #define OBS_TENSOR_T FloatTensor
 
 #include "vecenv.h"

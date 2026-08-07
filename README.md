@@ -19,7 +19,7 @@ From the PufferLib checkout, sync the environment and assets:
 ```sh
 cp ../Puffer/envs/dino/{dino.c,dino.h,binding.c} ocean/dino/
 cp ../Puffer/envs/dino/dino.ini config/dino.ini
-cp ../Puffer/resources/dino/{dino_weights.bin,dinosaur.png,cactus.png} resources/dino/
+cp ../Puffer/resources/dino/{dino_weights.bin,dinosaur.png,dinosaur_ducking.png,cactus.png,meteor.png} resources/dino/
 ```
 
 Install Emscripten, then build and test locally:
