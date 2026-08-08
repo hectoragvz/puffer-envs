@@ -12,7 +12,7 @@ const unsigned char DUCK = 2;
 #define JUMP_IMPULSE 18.0f
 #define OBSTACLE_SPEED 8.0f
 #define JUMP_PENALTY 0.05f
-#define METEOR_JUMP_PENALTY 0.01f
+#define METEOR_JUMP_PENALTY 0.05f
 
 #define DINO_STANDING_HEIGHT 48.0f
 #define DINO_DUCKING_HEIGHT 24.0f
