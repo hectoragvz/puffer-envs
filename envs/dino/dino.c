@@ -67,8 +67,7 @@ void forward_dino_policy(PufferNet* net, float* observations, float* actions) {
 }
 
 void reset_dino_policy(PufferNet* net) {
-    size_t state_size = net->mingru->num_layers *
-        net->mingru->batch_size * net->mingru->hidden_size;
+    size_t state_size = net->mingru->num_layers * net->mingru->batch_size * net->mingru->hidden_size;
     memset(net->mingru->state, 0, state_size * sizeof(float));
 }
 
@@ -91,8 +90,7 @@ static void digest_obstacle(uint64_t* digest, Obstacle obstacle) {
     digest_float(digest, obstacle.width);
 }
 
-static void digest_replay_event(uint64_t* digest, uint32_t event_index,
-        const DinoChallengeEvent* event, DinoSpeedChangeResult result) {
+static void digest_replay_event(uint64_t* digest, uint32_t event_index, const DinoChallengeEvent* event, DinoSpeedChangeResult result) {
     digest_u32(digest, event_index);
     digest_u32(digest, event->tick);
     digest_u32(digest, event->type);
@@ -100,8 +98,7 @@ static void digest_replay_event(uint64_t* digest, uint32_t event_index,
     digest_u32(digest, (uint32_t)result);
 }
 
-static void digest_trajectory_step(uint64_t* digest,
-        const DinoTrajectoryStep* step) {
+static void digest_trajectory_step(uint64_t* digest, const DinoTrajectoryStep* step) {
     digest_u32(digest, step->tick);
     for (uint32_t i = 0; i < DINO_OBSERVATION_COUNT; i++) {
         digest_float(digest, step->observations[i]);
@@ -124,13 +121,11 @@ static void digest_trajectory_step(uint64_t* digest,
     digest_float(digest, step->speed_multiplier);
 }
 
-static DinoReplayStatus replay_dino(Dino* env, PufferNet* net,
-        const DinoChallengeRecipe* recipe, DinoReplay* replay) {
+static DinoReplayStatus replay_dino(Dino* env, PufferNet* net, const DinoChallengeRecipe* recipe, DinoReplay* replay) {
     memset(replay, 0, sizeof(*replay));
     replay->collision_tick = UINT32_MAX;
     replay->status = dino_validate_recipe(recipe);
     if (replay->status != DINO_REPLAY_OK) return replay->status;
-
     env->auto_reset = 0;
     env->training_speedup_after_passes = 0;
     dino_seeded_replay_reset(env, recipe->seed);
@@ -140,10 +135,7 @@ static DinoReplayStatus replay_dino(Dino* env, PufferNet* net,
 
     for (uint32_t tick = 0; tick < DINO_REPLAY_LIMIT; tick++) {
         uint32_t first_event = event_index;
-        event_index = dino_apply_speed_events_at_tick(
-            env, recipe->events, recipe->event_count, event_index, tick,
-            replay->event_results
-        );
+        event_index = dino_apply_speed_events_at_tick(env, recipe->events, recipe->event_count, event_index, tick, replay->event_results);
         for (uint32_t i = first_event; i < event_index; i++) {
             digest_replay_event(
                 &replay->digest, i, &recipe->events[i],
@@ -154,22 +146,19 @@ static DinoReplayStatus replay_dino(Dino* env, PufferNet* net,
 
         DinoTrajectoryStep* step = &replay->steps[tick];
         step->tick = tick;
-        memcpy(step->observations, env->observations,
-            sizeof(step->observations));
+        memcpy(step->observations, env->observations, sizeof(step->observations));
         forward_dino_policy(net, env->observations, env->actions);
         step->action = (uint32_t)env->actions[0];
         if (step->action == JUMP && env->dinosaur.y == 0) {
             replay->jump_ticks[replay->jump_count++] = tick;
         }
-
         c_step(env);
         step->reward = env->rewards[0];
         step->terminal = (uint32_t)env->terminals[0];
         step->dinosaur = env->dinosaur;
         step->obstacle = env->obstacle;
         step->cleared_obstacle = env->cleared_obstacle;
-        step->cleared_obstacle_active =
-            (uint32_t)env->cleared_obstacle_active;
+        step->cleared_obstacle_active = (uint32_t)env->cleared_obstacle_active;
         step->score = (uint32_t)env->obstacles_passed;
         step->episode_return = env->episode_return;
         step->speed_multiplier = env->speed_multiplier;
@@ -191,8 +180,7 @@ static DinoReplayStatus replay_dino(Dino* env, PufferNet* net,
     return DINO_REPLAY_OK;
 }
 
-static int replay_steps_equal(const DinoTrajectoryStep* a,
-        const DinoTrajectoryStep* b) {
+static int replay_steps_equal(const DinoTrajectoryStep* a, const DinoTrajectoryStep* b) {
     if (a->tick != b->tick || a->action != b->action ||
             a->reward != b->reward || a->terminal != b->terminal ||
             memcmp(a->observations, b->observations,
@@ -217,10 +205,8 @@ static int replays_equal(const DinoReplay* a, const DinoReplay* b) {
             a->collision_tick != b->collision_tick ||
             a->jump_count != b->jump_count || a->digest != b->digest ||
             a->event_result_count != b->event_result_count ||
-            memcmp(a->event_results, b->event_results,
-                a->event_result_count * sizeof(*a->event_results)) != 0 ||
-            memcmp(a->jump_ticks, b->jump_ticks,
-                a->jump_count * sizeof(*a->jump_ticks)) != 0) {
+            memcmp(a->event_results, b->event_results, a->event_result_count * sizeof(*a->event_results)) != 0 ||
+            memcmp(a->jump_ticks, b->jump_ticks, a->jump_count * sizeof(*a->jump_ticks)) != 0) {
         return 0;
     }
     for (uint32_t i = 0; i < a->step_count; i++) {
@@ -290,15 +276,10 @@ void demo() {
     float terminals[1] = {0};
     init_dino(&env, observations, actions, rewards, terminals);
     env.auto_reset = 0;
-    env.training_speedup_after_passes =
-        DINO_CURRICULUM_SPEEDUP_AFTER_PASSES;
-
+    env.training_speedup_after_passes = DINO_CURRICULUM_SPEEDUP_AFTER_PASSES;
     Weights* weights = load_weights("resources/dino/dino_weights.bin");
     int logit_sizes[1] = {3};
-    PufferNet* net = make_puffernet(
-        weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1
-    );
-
+    PufferNet* net = make_puffernet(weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1);
     c_reset(&env);
     c_render(&env);
     DemoArgs args = {.env = &env, .net = net};
@@ -326,9 +307,7 @@ void run_headless_evaluation(int episodes, int trace) {
 
     Weights* weights = load_weights("resources/dino/dino_weights.bin");
     int logit_sizes[1] = {3};
-    PufferNet* net = make_puffernet(
-        weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1
-    );
+    PufferNet* net = make_puffernet(weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1);
     int total_passes = 0;
     int total_jumps = 0;
     int total_steps = 0;
@@ -346,8 +325,7 @@ void run_headless_evaluation(int episodes, int trace) {
         while (!env.terminals[0] &&
                 episode_steps < (int)EVALUATION_MAX_STEPS) {
             int tick = env.tick;
-            float distance = env.obstacle.x -
-                (env.dinosaur.x + env.dinosaur.width);
+            float distance = env.obstacle.x - (env.dinosaur.x + env.dinosaur.width);
             forward_dino_policy(net, env.observations, env.actions);
             int action = (int)env.actions[0];
             int jumped = action == JUMP && env.dinosaur.y == 0;
@@ -456,7 +434,7 @@ static const DinoEvaluationSuite EVALUATION_SUITES[] = {
     },
 };
 
-static void evaluate_suite(PufferNet* net, const DinoEvaluationSuite* suite) {
+static int evaluate_suite(PufferNet* net, const DinoEvaluationSuite* suite) {
     const uint32_t first_seed = 100000u;
     const int episodes = 100;
     Dino env;
@@ -476,6 +454,10 @@ static void evaluate_suite(PufferNet* net, const DinoEvaluationSuite* suite) {
     float total_return = 0;
     float takeoff_distance[2] = {0};
     int takeoffs[2] = {0};
+    int meteor_encounters = 0;
+    int meteor_passes = 0;
+    int duck_throughs = 0;
+    int meteor_jumps = 0;
 
     for (int episode = 0; episode < episodes; episode++) {
         dino_seeded_replay_reset(&env, first_seed + (uint32_t)episode);
@@ -483,22 +465,27 @@ static void evaluate_suite(PufferNet* net, const DinoEvaluationSuite* suite) {
         uint32_t event_index = 0;
         int episode_passes = 0;
         int episode_steps = 0;
+        int meteor_encountered = 0;
 
-        while (!env.terminals[0] &&
-                episode_steps < (int)EVALUATION_MAX_STEPS) {
+        while (!env.terminals[0] && episode_steps < (int)EVALUATION_MAX_STEPS) {
             event_index = dino_apply_speed_events_at_tick(
                 &env, suite->events, suite->event_count, event_index,
                 (uint32_t)env.tick, NULL
             );
-            float distance = env.obstacle.x -
-                (env.dinosaur.x + env.dinosaur.width);
+            float distance = env.obstacle.x - (env.dinosaur.x + env.dinosaur.width);
             forward_dino_policy(net, env.observations, env.actions);
             int jumped = (int)env.actions[0] == JUMP && env.dinosaur.y == 0;
+            int meteor = env.obstacle.bottom == METEOR_BOTTOM;
+            if (meteor && distance <= 160 && !meteor_encountered) {
+                meteor_encounters++;
+                meteor_encountered = 1;
+            }
             if (jumped) {
                 int speed_index = env.speed_multiplier == DINO_MAX_SPEED;
                 takeoff_distance[speed_index] += distance;
                 takeoffs[speed_index]++;
                 total_jumps++;
+                meteor_jumps += meteor;
             }
 
             c_step(&env);
@@ -507,6 +494,11 @@ static void evaluate_suite(PufferNet* net, const DinoEvaluationSuite* suite) {
             if (env.rewards[0] > 0) {
                 episode_passes++;
                 total_passes++;
+                if (meteor) {
+                    meteor_passes++;
+                    duck_throughs += env.dinosaur.ducking;
+                }
+                meteor_encountered = 0;
             }
         }
 
@@ -521,18 +513,23 @@ static void evaluate_suite(PufferNet* net, const DinoEvaluationSuite* suite) {
         "suite=%s seeds=%u-%u episodes=%d mean_passes=%.2f "
         "mean_return=%.3f mean_steps=%.1f mean_jumps=%.2f "
         "first_obstacle_crashes=%d truncated=%d "
-        "takeoff_1x=%.1f(n=%d) takeoff_2x=%.1f(n=%d)\n",
+        "takeoff_1x=%.1f(n=%d) takeoff_2x=%.1f(n=%d) "
+        "meteor_encounters=%d meteor_passes=%d duck_throughs=%d "
+        "meteor_jumps=%d meteor_jump_qualification=%s\n",
         suite->name, first_seed, first_seed + episodes - 1, episodes,
         total_passes / (float)episodes, total_return / episodes,
         total_steps / (float)episodes, total_jumps / (float)episodes,
         crashes_before_first_obstacle, truncated_episodes,
         takeoffs[0] ? takeoff_distance[0] / takeoffs[0] : 0, takeoffs[0],
-        takeoffs[1] ? takeoff_distance[1] / takeoffs[1] : 0, takeoffs[1]
+        takeoffs[1] ? takeoff_distance[1] / takeoffs[1] : 0, takeoffs[1],
+        meteor_encounters, meteor_passes, duck_throughs, meteor_jumps,
+        meteor_jumps == 0 ? "passed" : "FAILED"
     );
+
+    return meteor_jumps == 0;
 }
 
-static int run_diagnostic_evaluation(const char* suite_name,
-        const char* weights_path) {
+static int run_diagnostic_evaluation(const char* suite_name, const char* weights_path) {
     printf("weights=%s\n", weights_path);
     Weights* weights = load_weights(weights_path);
     int logit_sizes[1] = {3};
@@ -540,13 +537,12 @@ static int run_diagnostic_evaluation(const char* suite_name,
         weights, 1, DINO_OBSERVATION_COUNT, 128, 1, logit_sizes, 1
     );
     int found = 0;
+    int qualified = 1;
 
-    for (size_t i = 0; i < sizeof(EVALUATION_SUITES) /
-            sizeof(*EVALUATION_SUITES); i++) {
+    for (size_t i = 0; i < sizeof(EVALUATION_SUITES) / sizeof(*EVALUATION_SUITES); i++) {
         const DinoEvaluationSuite* suite = &EVALUATION_SUITES[i];
-        if (strcmp(suite_name, "all") == 0 ||
-                strcmp(suite_name, suite->name) == 0) {
-            evaluate_suite(net, suite);
+        if (strcmp(suite_name, "all") == 0 || strcmp(suite_name, suite->name) == 0) {
+            qualified &= evaluate_suite(net, suite);
             found = 1;
         }
     }
@@ -557,13 +553,11 @@ static int run_diagnostic_evaluation(const char* suite_name,
         fprintf(stderr, "Unknown evaluation suite: %s\n", suite_name);
         return 1;
     }
-    return 0;
+    return qualified ? 0 : 1;
 }
 
-static void print_replay(const DinoChallengeRecipe* recipe,
-        const DinoReplay* replay) {
-    const DinoTrajectoryStep* final =
-        &replay->steps[replay->step_count - 1];
+static void print_replay(const DinoChallengeRecipe* recipe, const DinoReplay* replay) {
+    const DinoTrajectoryStep* final = &replay->steps[replay->step_count - 1];
     printf(
         "schema_version=%u environment_version=%u policy_version=%u "
         "policy_sha256=%s seed=%u\n",

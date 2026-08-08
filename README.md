@@ -65,8 +65,10 @@ The available suites are `1x`, `2x`, `up`, `down`, `multi`, `curriculum`, and
 `all`. The `curriculum` suite starts at 1× and switches permanently to 2× after
 the seventh obstacle pass; the other suites use only their explicit speed
 events. Output includes passes, returns, episode lengths, first-obstacle
-crashes, truncations, and mean takeoff distance at each speed. A checkpoint
-must match the input dimension of the executable; evaluate five-observation
+crashes, truncations, mean takeoff distance at each speed, and meteor behavior.
+Every suite must report `meteor_jump_qualification=passed`: a grounded jump
+while the active obstacle is a meteor rejects the candidate. A checkpoint must
+match the input dimension of the executable; evaluate five-observation
 checkpoints with a Phase 0 build.
 
 The official records live in `envs/dino/dino.c`. To intentionally regenerate
@@ -79,7 +81,9 @@ first; floats are hashed by their IEEE-754 bit patterns.
 The Colab notebook pins both source repositories and archives every checkpoint,
 the console training log, configuration, and a run manifest to Drive. Treat its
 `latest-candidate.bin` as unevaluated until it has been compared with the other
-archived checkpoints using the suites above.
+archived checkpoints using the suites above. After selecting a candidate that
+passes every suite, update the environment and policy versions, weight hash,
+and official replay fixtures together with the promoted weight file.
 
 Ordinary training starts every episode at 1× and switches permanently to 2×
 after `training_speedup_after_passes` successful obstacle passes. The default

@@ -12,6 +12,7 @@ const unsigned char DUCK = 2;
 #define JUMP_IMPULSE 18.0f
 #define OBSTACLE_SPEED 8.0f
 #define JUMP_PENALTY 0.05f
+#define METEOR_JUMP_PENALTY 0.05f
 
 #define DINO_STANDING_HEIGHT 48.0f
 #define DINO_DUCKING_HEIGHT 24.0f
@@ -271,13 +272,17 @@ void c_step(Dino* env) {
     env->tick += 1;
     env->terminals[0] = 0;
     env->rewards[0] = 0;
-    int action = (int)env->actions[0]; // NOOP or JUMP
+    int action = (int)env->actions[0];
     env->dinosaur.ducking = action == DUCK && env->dinosaur.y == 0;
 
     // If dino on ground, we jump and mod y_velocity
     if (action == JUMP && env->dinosaur.y == 0){
+        float jump_penalty = JUMP_PENALTY;
+        if (env->obstacle.bottom == METEOR_BOTTOM) {
+            jump_penalty += METEOR_JUMP_PENALTY;
+        }
         env->dinosaur.y_velocity = JUMP_IMPULSE;
-        env->rewards[0] = -JUMP_PENALTY;
+        env->rewards[0] = -jump_penalty;
         env->episode_return += env->rewards[0];
     }
     // if dino not on ground, gravity acts

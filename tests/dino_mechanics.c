@@ -356,9 +356,31 @@ static void test_jump_cost(void) {
     float terminals[1] = {0};
     Dino env = make_env(observations, actions, rewards, terminals, 1);
     c_reset(&env);
+    env.obstacle.bottom = 0;
     c_step(&env);
     assert(env.dinosaur.y > 0);
     assert(env.rewards[0] == -JUMP_PENALTY);
+}
+
+static void test_meteor_jump_cost(void) {
+    float observations[DINO_OBSERVATION_COUNT] = {0};
+    float actions[1] = {JUMP};
+    float rewards[1] = {0};
+    float terminals[1] = {0};
+    Dino env = make_env(observations, actions, rewards, terminals, 1);
+    c_reset(&env);
+    env.obstacle = (Obstacle) {
+        .x = env.width,
+        .width = METEOR_WIDTH,
+        .height = METEOR_HEIGHT,
+        .bottom = METEOR_BOTTOM,
+    };
+    c_step(&env);
+    assert(env.dinosaur.y > 0);
+    assert(env.rewards[0] == -(JUMP_PENALTY + METEOR_JUMP_PENALTY));
+
+    c_step(&env);
+    assert(env.rewards[0] == 0);
 }
 
 static void test_duck_is_held_and_ground_only(void) {
@@ -580,6 +602,7 @@ int main(void) {
     test_training_speedup_after_passes();
     test_training_speedup_zero_stays_at_1x();
     test_jump_cost();
+    test_meteor_jump_cost();
     test_duck_is_held_and_ground_only();
     test_meteor_requires_duck();
     test_scripted_controller_speed_suites();
